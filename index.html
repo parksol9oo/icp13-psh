@@ -3,21 +3,183 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F0E8DC">
   <title>나의 할 일</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="app">
-    <section class="card card--hero">
-      <svg class="hero__face" width="190" height="130" viewBox="0 0 160 110" aria-hidden="true">
-        <path d="M80 6C40 6 12 40 12 84c0 14 4 26 4 26h128s4-12 4-26C148 40 120 6 80 6z" fill="#F3BDEE"></path>
-        <circle cx="58" cy="60" r="6" fill="#1A1A1A"></circle>
-        <circle cx="102" cy="60" r="6" fill="#1A1A1A"></circle>
-        <path d="M56 80c8 14 40 14 48 0" stroke="#1A1A1A" stroke-width="5" stroke-linecap="round" fill="none"></path>
-      </svg>
-      <h1 class="hero__title">나의 할 일</h1>
+
+    <!-- 이메일 인증 (처음 한 번) -->
+    <section id="view-auth" class="view view--auth" hidden>
+      <div class="hero">
+        <svg class="hero__sticker hero__sticker--left" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4l6 12 13-3-5 12 11 7-12 5 2 13-12-5-7 11-5-12-13 3 5-12L4 28l12-5-2-13 12 5z" fill="#D9E47A"></path><text x="32" y="38" text-anchor="middle" font-weight="800" font-size="16" fill="#2F5A4C">yo!</text></svg>
+        <svg class="hero__sticker hero__sticker--right" width="54" height="54" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="10" r="10" fill="#E8622A"></circle><circle cx="45" cy="22" r="10" fill="#E8622A"></circle><circle cx="39" cy="42" r="10" fill="#E8622A"></circle><circle cx="17" cy="42" r="10" fill="#E8622A"></circle><circle cx="11" cy="22" r="10" fill="#E8622A"></circle><circle cx="28" cy="27" r="7" fill="#D9E47A"></circle></svg>
+        <svg class="hero__face" width="190" height="130" viewBox="0 0 160 110" aria-hidden="true"><path d="M80 6C40 6 12 40 12 84c0 14 4 26 4 26h128s4-12 4-26C148 40 120 6 80 6z" fill="#F3BDEE"></path><circle cx="58" cy="60" r="6" fill="#1A1A1A"></circle><circle cx="102" cy="60" r="6" fill="#1A1A1A"></circle><path d="M56 80c8 14 40 14 48 0" stroke="#1A1A1A" stroke-width="5" stroke-linecap="round" fill="none"></path></svg>
+        <h1 class="hero__title">나의 할 일</h1>
+      </div>
+      <p class="lead center">처음 한 번만 이메일로 확인해요.<br>메일에 온 링크를 누르면<br>이 기기에서는 계속 열려 있어요.</p>
+      <form id="auth-form" class="form">
+        <div class="field">
+          <label for="auth-email">이메일</label>
+          <input id="auth-email" class="input" type="email" required autocomplete="email" inputmode="email" placeholder="이메일 주소">
+        </div>
+        <button id="auth-submit" class="btn" type="submit">확인 링크 보내기</button>
+      </form>
+      <div id="auth-sent" class="state state--done" hidden>
+        <p class="state__title">메일을 보냈어요!</p>
+        <p class="state__sub">메일함에서 링크를 누르면 바로 열려요.<br>메일이 안 보이면 스팸함도 확인해 보세요.</p>
+      </div>
+      <p class="note center">비밀번호는 없어요.<br>메일함에 온 링크만 누르면 돼요.</p>
     </section>
-    <p class="muted center">준비 중이에요. 곧 열려요.</p>
+
+    <!-- 홈: 달력 + 하루 할 일 -->
+    <section id="view-home" class="view" hidden>
+      <header class="topbar">
+        <button id="btn-add-top" class="iconbtn" type="button" aria-label="할 일 추가">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+        <svg width="48" height="48" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="10" r="10" fill="#E8622A"></circle><circle cx="45" cy="22" r="10" fill="#E8622A"></circle><circle cx="39" cy="42" r="10" fill="#E8622A"></circle><circle cx="17" cy="42" r="10" fill="#E8622A"></circle><circle cx="11" cy="22" r="10" fill="#E8622A"></circle><circle cx="28" cy="27" r="7" fill="#D9E47A"></circle></svg>
+      </header>
+
+      <h1 class="title">나의 할 일</h1>
+
+      <button id="overdue-banner" class="banner" type="button" hidden>
+        <span class="banner__text">
+          <strong id="overdue-count-text">밀린 할 일 0개</strong>
+          <span>눌러서 오늘로 옮기기</span>
+        </span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+      </button>
+
+      <section class="card calendar" aria-label="달력">
+        <div class="calendar__head">
+          <button id="cal-prev" class="iconbtn iconbtn--sm" type="button" aria-label="지난달">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <button id="cal-title" class="calendar__title" type="button" aria-label="오늘로 가기">2026년 10월</button>
+          <button id="cal-next" class="iconbtn iconbtn--sm" type="button" aria-label="다음달">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+          </button>
+        </div>
+        <div class="calendar__weekdays" aria-hidden="true">
+          <span class="is-sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+        <div id="cal-grid" class="calendar__grid"></div>
+      </section>
+
+      <section class="day" aria-live="polite">
+        <h2 id="day-title" class="day__title"></h2>
+        <div class="chips">
+          <span id="chip-time" class="chip chip--green"></span>
+          <span id="chip-count" class="chip chip--outline"></span>
+        </div>
+      </section>
+
+      <div id="day-done" class="state state--done" hidden>
+        <svg width="150" height="104" viewBox="0 0 160 110" aria-hidden="true"><path d="M80 6C40 6 12 40 12 84c0 14 4 26 4 26h128s4-12 4-26C148 40 120 6 80 6z" fill="#F3BDEE"></path><circle cx="58" cy="60" r="6" fill="#1A1A1A"></circle><circle cx="102" cy="60" r="6" fill="#1A1A1A"></circle><path d="M56 80c8 14 40 14 48 0" stroke="#1A1A1A" stroke-width="5" stroke-linecap="round" fill="none"></path></svg>
+        <p class="state__title">할 일을 다 끝냈어요!</p>
+        <p class="state__sub">수고했어요. 푹 쉬어요.</p>
+      </div>
+
+      <div id="todo-list" class="list"></div>
+
+      <div id="day-empty" class="state" hidden>
+        <svg width="110" height="76" viewBox="0 0 160 110" aria-hidden="true"><path d="M80 6C40 6 12 40 12 84c0 14 4 26 4 26h128s4-12 4-26C148 40 120 6 80 6z" fill="#D9E47A"></path><circle cx="58" cy="60" r="6" fill="#1A1A1A"></circle><circle cx="102" cy="60" r="6" fill="#1A1A1A"></circle><path d="M56 80c8 14 40 14 48 0" stroke="#1A1A1A" stroke-width="5" stroke-linecap="round" fill="none"></path></svg>
+        <p class="state__title">이 날은 할 일이 없어요</p>
+        <p class="state__sub">아래 버튼으로 추가해 보세요.</p>
+      </div>
+
+      <p id="loading" class="note center">불러오는 중…</p>
+
+      <button id="btn-add" class="btn" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        할 일 추가
+      </button>
+      <button id="btn-logout" class="linkbtn" type="button">로그아웃</button>
+    </section>
+
+    <!-- 할 일 추가 / 고치기 -->
+    <section id="view-edit" class="view" hidden>
+      <header class="topbar">
+        <button id="edit-back" class="iconbtn" type="button" aria-label="뒤로">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        </button>
+        <svg width="44" height="44" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="10" r="10" fill="#E8622A"></circle><circle cx="45" cy="22" r="10" fill="#E8622A"></circle><circle cx="39" cy="42" r="10" fill="#E8622A"></circle><circle cx="17" cy="42" r="10" fill="#E8622A"></circle><circle cx="11" cy="22" r="10" fill="#E8622A"></circle><circle cx="28" cy="27" r="7" fill="#D9E47A"></circle></svg>
+      </header>
+
+      <h1 id="edit-title" class="title title--sm">새 할 일</h1>
+
+      <form id="edit-form" class="form form--fill" novalidate>
+        <div class="field">
+          <div class="field__head">
+            <label for="f-title">제목</label>
+            <span id="count-title" class="counter">0/50</span>
+          </div>
+          <input id="f-title" class="input" type="text" maxlength="50" placeholder="무엇을 할까요?" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <div class="field__head">
+            <label for="f-desc">한 줄 설명</label>
+            <span id="count-desc" class="counter">0/100</span>
+          </div>
+          <input id="f-desc" class="input" type="text" maxlength="100" placeholder="짧게 한 줄로 적어요" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <div class="field__head"><label for="f-date">날짜</label></div>
+          <input id="f-date" class="input" type="date" required>
+        </div>
+
+        <div class="field">
+          <div class="field__head">
+            <span class="field__label">예상 소요 시간</span>
+            <span class="hint">선택</span>
+          </div>
+          <div id="f-duration" class="pills" role="group" aria-label="예상 소요 시간">
+            <button class="pill" type="button" data-minutes="15" aria-pressed="false">15분</button>
+            <button class="pill" type="button" data-minutes="30" aria-pressed="false">30분</button>
+            <button class="pill" type="button" data-minutes="60" aria-pressed="false">1시간</button>
+            <button class="pill" type="button" data-minutes="120" aria-pressed="false">2시간</button>
+            <button class="pill" type="button" data-minutes="180" aria-pressed="false">3시간 이상</button>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <button id="edit-submit" class="btn" type="submit">저장</button>
+        <button id="btn-delete" class="linkbtn linkbtn--danger" type="button" hidden>이 할 일 지우기</button>
+      </form>
+    </section>
+
+    <!-- 밀린 할 일 -->
+    <section id="view-overdue" class="view" hidden>
+      <header class="topbar">
+        <button id="overdue-back" class="iconbtn" type="button" aria-label="뒤로">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        </button>
+        <svg width="52" height="52" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4l6 12 13-3-5 12 11 7-12 5 2 13-12-5-7 11-5-12-13 3 5-12L4 28l12-5-2-13 12 5z" fill="#D9E47A"></path><text x="32" y="38" text-anchor="middle" font-weight="800" font-size="16" fill="#2F5A4C">yo!</text></svg>
+      </header>
+
+      <h1 class="title title--sm">밀린 할 일</h1>
+      <p id="overdue-lead" class="lead"></p>
+
+      <div id="overdue-list" class="list"></div>
+
+      <div class="spacer"></div>
+
+      <div class="center">
+        <svg width="120" height="80" viewBox="0 0 160 110" aria-hidden="true"><path d="M80 6C40 6 12 40 12 84c0 14 4 26 4 26h128s4-12 4-26C148 40 120 6 80 6z" fill="#F3BDEE"></path><circle cx="58" cy="60" r="6" fill="#1A1A1A"></circle><circle cx="102" cy="60" r="6" fill="#1A1A1A"></circle><path d="M56 80c8 14 40 14 48 0" stroke="#1A1A1A" stroke-width="5" stroke-linecap="round" fill="none"></path></svg>
+      </div>
+
+      <button id="btn-move-all" class="btn" type="button">모두 오늘로 옮기기</button>
+    </section>
+
   </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
