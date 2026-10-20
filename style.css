@@ -1,0 +1,65 @@
+/* 나의 할 일 — 색, 글꼴, 배치 */
+
+:root {
+  --ground: #F0E8DC;
+  --card: #F8F3EB;
+  --card-done: #F4EEE4;
+  --ink: #1A1A1A;
+  --muted: #5A5650;
+  --muted-2: #6B665F;
+  --blue: #2563EB;
+  --green: #2F5A4C;
+  --lime: #D9E47A;
+  --pink: #F3BDEE;
+  --orange: #E8622A;
+  --sky: #C9E4F8;
+  --peach: #F7C8B0;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 56px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 22px;
+  padding: 16px;
+}
+
+.card--hero {
+  background: var(--green);
+  border-radius: 28px;
+  padding: 36px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.hero__title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--card);
+}
+
+.muted { color: var(--muted); }
+.center { text-align: center; }
