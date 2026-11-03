@@ -10,6 +10,9 @@ const DURATION_CLASSES = { 15: 'chip--sky', 30: 'chip--lime', 60: 'chip--pink', 
 const MAX_BATCH = 200; // 한 번에 만들 수 있는 할 일 개수
 const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>';
 const CHECK_SM_SVG = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>';
+const HANDLE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"></path></svg>';
+const UP_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg>';
+const DOWN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,6 +59,8 @@ const state = {
   mode: 'single', // single | multi | repeat
   pick: { year: 0, month: 0, dates: new Set() },
   repeat: { kind: 'daily', weekdays: new Set(), endMode: 'until' },
+  reorder: false, // 순서 바꾸기 모드
+  drag: null,
 };
 
 let entered = false;
@@ -118,6 +123,17 @@ async function loadTodos() {
 
 function todosOn(date) {
   return state.todos.filter((t) => t.due_date === date);
+}
+
+// 하루 안의 순서: 직접 정한 순서(sort_order)가 먼저, 아직 안 정한 것은 만든 순서대로 뒤에
+function byOrder(a, b) {
+  const ao = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+  const bo = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+  return ao - bo || a.created_at.localeCompare(b.created_at);
+}
+
+function openTodosOn(date) {
+  return todosOn(date).filter((t) => !t.completed).sort(byOrder);
 }
 
 function overdueTodos() {
@@ -183,6 +199,90 @@ async function deleteTodo(id) {
   if (ids.length > 1) toast(`${ids.length}개를 지웠어요.`);
   render();
   showView('home');
+}
+
+// ---------- 순서 바꾸기 ----------
+function setReorder(on) {
+  state.reorder = on;
+  if (!on) endDrag(false);
+  renderDay();
+}
+
+// ids 순서대로 sort_order를 다시 매기고 저장한다
+async function applyOrder(ids) {
+  const changed = [];
+  ids.forEach((id, i) => {
+    const t = state.todos.find((x) => x.id === id);
+    const v = (i + 1) * 10;
+    if (t && t.sort_order !== v) { t.sort_order = v; changed.push(t); }
+  });
+  renderDay();
+  if (!changed.length) return;
+  const results = await Promise.all(changed.map((t) => sb.from('todos').update({ sort_order: t.sort_order }).eq('id', t.id)));
+  const failed = results.find((r) => r.error);
+  if (failed) {
+    toast(/sort_order/.test(failed.error.message)
+      ? '보관함 업데이트가 필요해요. Supabase에서 supabase/update-2-sort.sql을 실행해 주세요.'
+      : '순서를 저장하지 못했어요: ' + failed.error.message);
+  }
+}
+
+function moveBy(id, delta) {
+  const open = openTodosOn(state.selected);
+  const i = open.findIndex((t) => t.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= open.length) return;
+  [open[i], open[j]] = [open[j], open[i]];
+  applyOrder(open.map((t) => t.id));
+}
+
+// 손잡이를 끌어서 옮기기 (휴대폰 터치와 마우스 모두)
+function startDrag(e, handle) {
+  const card = handle.closest('.todo');
+  if (!card || state.drag) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  handle.setPointerCapture(e.pointerId);
+  state.drag = { card, handle, pointerId: e.pointerId, startY: e.clientY, list: $('todo-list') };
+  card.classList.add('is-dragging');
+}
+
+function moveDrag(e) {
+  const d = state.drag;
+  if (!d || e.pointerId !== d.pointerId) return;
+  const y = e.clientY;
+  d.card.style.transform = `translateY(${y - d.startY}px)`;
+
+  // 아래 카드의 중간을 지나면 그 뒤로, 위 카드의 중간을 지나면 그 앞으로
+  const next = d.card.nextElementSibling;
+  const prev = d.card.previousElementSibling;
+  let target = null;
+  let after = false;
+  if (next && next.classList.contains('is-open')) {
+    const r = next.getBoundingClientRect();
+    if (y > r.top + r.height / 2) { target = next; after = true; }
+  }
+  if (!target && prev && prev.classList.contains('is-open')) {
+    const r = prev.getBoundingClientRect();
+    if (y < r.top + r.height / 2) { target = prev; after = false; }
+  }
+  if (!target) return;
+
+  const before = d.card.getBoundingClientRect().top;
+  if (after) target.after(d.card); else target.before(d.card);
+  const now = d.card.getBoundingClientRect().top;
+  d.startY += now - before; // 자리가 바뀌어도 손가락 아래에 그대로 있게
+  d.card.style.transform = `translateY(${y - d.startY}px)`;
+}
+
+function endDrag(save = true) {
+  const d = state.drag;
+  if (!d) return;
+  state.drag = null;
+  d.card.classList.remove('is-dragging');
+  d.card.style.transform = '';
+  try { d.handle.releasePointerCapture(d.pointerId); } catch (_) { /* 이미 풀린 경우 */ }
+  if (save) applyOrder([...d.list.querySelectorAll('.todo.is-open')].map((c) => c.dataset.id));
 }
 
 async function moveToToday(ids) {
@@ -266,15 +366,39 @@ function renderDay() {
   $('day-title').textContent = prefix + formatDateWeekday(s);
 
   const list = todosOn(s);
-  const open = list.filter((t) => !t.completed);
-  const done = list.filter((t) => t.completed);
+  const open = openTodosOn(s);
+  const done = list.filter((t) => t.completed).sort(byOrder);
   const minutes = open.reduce((sum, t) => sum + (t.estimated_minutes || 0), 0);
+
+  if (open.length < 2) state.reorder = false;
+  const btn = $('btn-reorder');
+  btn.hidden = open.length < 2;
+  btn.textContent = state.reorder ? '순서 바꾸기 끝' : '순서 바꾸기';
+  btn.classList.toggle('is-on', state.reorder);
+  btn.setAttribute('aria-pressed', String(state.reorder));
 
   $('chip-time').textContent = `남은 예상 시간 ${formatMinutes(minutes)}`;
   $('chip-count').textContent = `${open.length}개 남음`;
-  $('todo-list').innerHTML = [...open, ...done].map(todoCard).join('');
+  $('todo-list').innerHTML = [
+    ...open.map((t, i) => (state.reorder ? reorderCard(t, i, open.length) : todoCard(t))),
+    ...done.map(todoCard),
+  ].join('');
   $('day-empty').hidden = !(state.loaded && list.length === 0);
   $('day-done').hidden = !(state.loaded && list.length > 0 && open.length === 0);
+}
+
+function reorderCard(t, i, n) {
+  return `<article class="todo is-open todo--reorder" data-id="${t.id}">
+    <button type="button" class="todo__handle" data-action="drag" aria-label="끌어서 순서 바꾸기">${HANDLE_SVG}</button>
+    <div class="todo__body">
+      <span class="todo__title">${escapeHtml(t.title)}</span>
+      <span class="todo__desc">${escapeHtml(t.description)}</span>
+    </div>
+    <div class="todo__arrows">
+      <button type="button" class="arrow" data-action="up" aria-label="위로" ${i === 0 ? 'disabled' : ''}>${UP_SVG}</button>
+      <button type="button" class="arrow" data-action="down" aria-label="아래로" ${i === n - 1 ? 'disabled' : ''}>${DOWN_SVG}</button>
+    </div>
+  </article>`;
 }
 
 function durationChip(t) {
@@ -284,7 +408,7 @@ function durationChip(t) {
 }
 
 function todoCard(t) {
-  return `<article class="todo${t.completed ? ' is-done' : ''}" data-id="${t.id}">
+  return `<article class="todo${t.completed ? ' is-done' : ' is-open'}" data-id="${t.id}">
     <button type="button" class="todo__check" data-action="toggle" aria-label="${t.completed ? '완료 취소' : '완료 표시'}" aria-pressed="${t.completed}">${t.completed ? CHECK_SVG : ''}</button>
     <button type="button" class="todo__body" data-action="edit">
       <span class="todo__title">${escapeHtml(t.title)}</span>
@@ -312,6 +436,7 @@ function renderOverdue() {
 
 // ---------- 추가 / 고치기 화면 ----------
 function openEdit(todo, date) {
+  if (state.reorder) setReorder(false);
   state.editingId = todo ? todo.id : null;
   state.pickedMinutes = todo ? todo.estimated_minutes : null;
   $('edit-title').textContent = todo ? '할 일 고치기' : '새 할 일';
@@ -576,18 +701,32 @@ function wireEvents() {
     const b = e.target.closest('[data-date]');
     if (!b) return;
     state.selected = b.dataset.date;
+    state.reorder = false;
     render();
   });
 
   $('todo-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-action]');
-    if (!b) return;
+    if (!b || b.disabled) return;
     const id = b.closest('.todo').dataset.id;
     if (b.dataset.action === 'toggle') toggleTodo(id);
     if (b.dataset.action === 'edit') openEdit(state.todos.find((t) => t.id === id), state.selected);
+    if (b.dataset.action === 'up') moveBy(id, -1);
+    if (b.dataset.action === 'down') moveBy(id, 1);
   });
 
-  $('overdue-banner').addEventListener('click', () => { renderOverdue(); showView('overdue'); });
+  // 순서 바꾸기: 손잡이 끌기
+  $('btn-reorder').addEventListener('click', () => setReorder(!state.reorder));
+  const list = $('todo-list');
+  list.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest('[data-action="drag"]');
+    if (h) startDrag(e, h);
+  });
+  list.addEventListener('pointermove', moveDrag);
+  list.addEventListener('pointerup', () => endDrag(true));
+  list.addEventListener('pointercancel', () => endDrag(true));
+
+  $('overdue-banner').addEventListener('click', () => { setReorder(false); renderOverdue(); showView('overdue'); });
   $('overdue-back').addEventListener('click', () => showView('home'));
   $('overdue-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-action]');

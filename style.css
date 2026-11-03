@@ -275,6 +275,15 @@ button { cursor: pointer; }
 .chip--green { background: var(--green); color: var(--card); }
 .chip--outline { border: 1.5px solid var(--ink); }
 
+.chip--btn {
+  margin-left: auto;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+
+.chip--btn.is-on { background: var(--ink); color: #FFFFFF; }
+
 .chip--sm {
   height: 20px;
   padding: 0 8px;
@@ -351,6 +360,51 @@ button { cursor: pointer; }
 
 .todo__meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .todo__date { font-size: 12px; font-weight: 700; color: var(--rust-dark); flex-shrink: 0; }
+
+/* 순서 바꾸기 모드 */
+.todo--reorder { background: #FFFFFF; }
+.todo--reorder .todo__body { cursor: default; }
+
+.todo__handle {
+  width: 32px;
+  height: 32px;
+  margin-left: -6px;
+  border: none;
+  background: none;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-2);
+  touch-action: none;
+  cursor: grab;
+}
+
+.todo__arrows { display: flex; gap: 4px; flex-shrink: 0; }
+
+.arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arrow:disabled { opacity: 0.25; cursor: default; }
+
+.todo.is-dragging {
+  position: relative;
+  z-index: 5;
+  box-shadow: 0 10px 28px rgba(26, 26, 26, 0.2);
+  cursor: grabbing;
+}
+
+.todo.is-dragging .todo__handle { cursor: grabbing; }
 
 /* 버튼 */
 .btn {

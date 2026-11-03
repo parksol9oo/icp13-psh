@@ -10,7 +10,8 @@ create table if not exists public.todos (
   estimated_minutes integer check (estimated_minutes in (15, 30, 60, 120, 180)),
   completed boolean not null default false,
   created_at timestamptz not null default now(),
-  series_id uuid -- 여러 날·반복으로 함께 만든 할 일은 같은 번호를 가진다 (묶음 지우기용)
+  series_id uuid, -- 여러 날·반복으로 함께 만든 할 일은 같은 번호를 가진다 (묶음 지우기용)
+  sort_order integer -- 하루 안에서 직접 정한 순서. 비어 있으면 만든 순서대로 뒤에 온다
 );
 
 -- 빠르게 찾기 위한 색인
