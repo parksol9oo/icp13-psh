@@ -440,6 +440,101 @@ input[type="date"].input {
 
 .pill.is-on { background: var(--ink); color: #FFFFFF; font-weight: 700; }
 
+.pill--sm { height: 38px; padding: 0 14px; border-radius: 19px; font-size: 14px; }
+
+/* 하루 / 여러 날 / 반복 고르기 */
+.seg {
+  display: flex;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--card);
+  gap: 4px;
+}
+
+.seg__btn {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.seg__btn.is-on { background: var(--ink); color: #FFFFFF; font-weight: 700; }
+
+.sub { display: flex; flex-direction: column; gap: 14px; }
+.sublabel { font-size: 13px; font-weight: 700; color: var(--muted); }
+.summary { margin: 0; padding: 0 4px; font-size: 13px; line-height: 1.5; color: var(--green); font-weight: 700; }
+
+.picker { padding: 12px 8px 8px; display: flex; flex-direction: column; gap: 8px; }
+.picker .calendar__title { font-size: 16px; }
+.picker .cal__blank, .picker .cal__day { height: 40px; }
+.picker .cal__day { padding-top: 6px; }
+
+.cal__day--pick.is-today .cal__num {
+  background: transparent;
+  color: var(--blue);
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+
+.cal__day--pick.is-picked .cal__num {
+  background: var(--ink);
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.weekdays { display: flex; gap: 6px; }
+
+.wd {
+  flex: 1;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0;
+  max-width: 44px;
+}
+
+.wd--sun { color: var(--rust); border-color: var(--rust); }
+.wd.is-on { background: var(--ink); color: #FFFFFF; border-color: var(--ink); font-weight: 700; }
+
+.inline { display: flex; align-items: center; gap: 10px; }
+.inline__text { font-size: 15px; font-weight: 700; }
+.input--num { width: 110px; text-align: center; }
+
+/* 확인 창 */
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(26, 26, 26, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.dialog__box {
+  width: 100%;
+  max-width: 390px;
+  background: var(--ground);
+  border-radius: 24px;
+  padding: 24px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog__title { margin: 0; font-size: 17px; font-weight: 800; line-height: 1.4; text-align: center; }
+.dialog__actions { display: flex; flex-direction: column; gap: 8px; }
+.dialog__actions .btn { height: 50px; font-size: 16px; }
+.btn--danger { background: var(--rust); color: #FFFFFF; }
+
 /* 상태 카드 (할 일 없음 / 다 끝냄 / 메일 보냄) */
 .state {
   display: flex;

@@ -128,8 +128,86 @@
         </div>
 
         <div class="field">
-          <div class="field__head"><label for="f-date">날짜</label></div>
-          <input id="f-date" class="input" type="date" required>
+          <div class="field__head"><span class="field__label">날짜</span></div>
+
+          <div id="mode-pills" class="seg" role="group" aria-label="날짜 방식">
+            <button class="seg__btn is-on" type="button" data-mode="single" aria-pressed="true">하루</button>
+            <button class="seg__btn" type="button" data-mode="multi" aria-pressed="false">여러 날</button>
+            <button class="seg__btn" type="button" data-mode="repeat" aria-pressed="false">반복</button>
+          </div>
+
+          <!-- 하루 -->
+          <div id="mode-single">
+            <input id="f-date" class="input" type="date" aria-label="날짜">
+          </div>
+
+          <!-- 여러 날 -->
+          <div id="mode-multi" class="sub" hidden>
+            <div class="card picker">
+              <div class="calendar__head">
+                <button id="pick-prev" class="iconbtn iconbtn--sm" type="button" aria-label="지난달">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+                </button>
+                <span id="pick-title" class="calendar__title"></span>
+                <button id="pick-next" class="iconbtn iconbtn--sm" type="button" aria-label="다음달">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+                </button>
+              </div>
+              <div class="calendar__weekdays" aria-hidden="true">
+                <span class="is-sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+              </div>
+              <div id="pick-grid" class="calendar__grid"></div>
+            </div>
+            <p id="multi-summary" class="summary"></p>
+          </div>
+
+          <!-- 반복 -->
+          <div id="mode-repeat" class="sub" hidden>
+            <div class="field">
+              <div class="field__head"><label for="r-start" class="sublabel">시작일</label></div>
+              <input id="r-start" class="input" type="date">
+            </div>
+
+            <div class="field">
+              <div class="field__head"><span class="sublabel">어떻게 반복할까요?</span></div>
+              <div id="r-kind" class="pills" role="group" aria-label="반복 종류">
+                <button class="pill pill--sm is-on" type="button" data-kind="daily" aria-pressed="true">매일</button>
+                <button class="pill pill--sm" type="button" data-kind="weekly" aria-pressed="false">매주</button>
+                <button class="pill pill--sm" type="button" data-kind="monthly" aria-pressed="false">매월</button>
+                <button class="pill pill--sm" type="button" data-kind="every" aria-pressed="false">N일마다</button>
+              </div>
+              <div id="r-weekdays" class="weekdays" role="group" aria-label="요일" hidden>
+                <button class="wd wd--sun" type="button" data-dow="0" aria-pressed="false">일</button>
+                <button class="wd" type="button" data-dow="1" aria-pressed="false">월</button>
+                <button class="wd" type="button" data-dow="2" aria-pressed="false">화</button>
+                <button class="wd" type="button" data-dow="3" aria-pressed="false">수</button>
+                <button class="wd" type="button" data-dow="4" aria-pressed="false">목</button>
+                <button class="wd" type="button" data-dow="5" aria-pressed="false">금</button>
+                <button class="wd" type="button" data-dow="6" aria-pressed="false">토</button>
+              </div>
+              <div id="r-every-wrap" class="inline" hidden>
+                <input id="r-every" class="input input--num" type="number" min="1" max="365" value="3" inputmode="numeric" aria-label="며칠마다">
+                <span class="inline__text">일마다</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field__head"><span class="sublabel">언제까지?</span></div>
+              <div id="r-end" class="pills" role="group" aria-label="반복 끝">
+                <button class="pill pill--sm is-on" type="button" data-end="until" aria-pressed="true">날짜까지</button>
+                <button class="pill pill--sm" type="button" data-end="count" aria-pressed="false">횟수</button>
+              </div>
+              <div id="r-until-wrap">
+                <input id="r-until" class="input" type="date" aria-label="종료 날짜">
+              </div>
+              <div id="r-count-wrap" class="inline" hidden>
+                <input id="r-count" class="input input--num" type="number" min="1" max="200" value="10" inputmode="numeric" aria-label="횟수">
+                <span class="inline__text">번</span>
+              </div>
+            </div>
+
+            <p id="repeat-summary" class="summary"></p>
+          </div>
         </div>
 
         <div class="field">
@@ -177,6 +255,14 @@
     </section>
 
   </main>
+
+  <!-- 확인 창 -->
+  <div id="dialog" class="dialog" hidden>
+    <div class="dialog__box" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <p id="dialog-title" class="dialog__title"></p>
+      <div id="dialog-actions" class="dialog__actions"></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
 

@@ -7,6 +7,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const DURATION_LABELS = { 15: '15분', 30: '30분', 60: '1시간', 120: '2시간', 180: '3시간 이상' };
 const DURATION_CLASSES = { 15: 'chip--sky', 30: 'chip--lime', 60: 'chip--pink', 120: 'chip--peach', 180: 'chip--green' };
+const MAX_BATCH = 200; // 한 번에 만들 수 있는 할 일 개수
 const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>';
 const CHECK_SM_SVG = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>';
 
@@ -18,6 +19,14 @@ function ymd(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
 function todayYmd() { return ymd(new Date()); }
 function addDays(s, n) { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }
+function addMonths(s, n) {
+  const d = parseYmd(s);
+  const day = d.getDate();
+  const t = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const dim = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(day, dim));
+  return ymd(t);
+}
 function formatDate(s) { const d = parseYmd(s); return `${d.getMonth() + 1}월 ${d.getDate()}일`; }
 function formatDateWeekday(s) { return `${formatDate(s)} ${WEEKDAYS[parseYmd(s).getDay()]}요일`; }
 function formatDateShort(s) { return `${formatDate(s)} (${WEEKDAYS[parseYmd(s).getDay()]})`; }
@@ -44,11 +53,14 @@ const state = {
   selected: todayYmd(),
   editingId: null,
   pickedMinutes: null,
+  mode: 'single', // single | multi | repeat
+  pick: { year: 0, month: 0, dates: new Set() },
+  repeat: { kind: 'daily', weekdays: new Set(), endMode: 'until' },
 };
 
 let entered = false;
 
-// ---------- 화면 전환 / 알림 ----------
+// ---------- 화면 전환 / 알림 / 확인 창 ----------
 function showView(name) {
   for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== `view-${name}`;
   window.scrollTo(0, 0);
@@ -63,6 +75,27 @@ function toast(msg) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 2800);
 }
 
+// 확인 창: 제목과 버튼 목록을 보여주고, 누른 버튼의 value를 돌려준다 (바깥을 누르면 null)
+function ask(title, actions) {
+  return new Promise((resolve) => {
+    const dlg = $('dialog');
+    const box = $('dialog-actions');
+    $('dialog-title').textContent = title;
+    box.innerHTML = actions
+      .map((a, i) => `<button type="button" class="btn ${a.danger ? 'btn--danger' : 'btn--outline'}" data-i="${i}">${escapeHtml(a.label)}</button>`)
+      .join('');
+    const close = (v) => { dlg.hidden = true; dlg.onclick = null; box.onclick = null; resolve(v); };
+    box.onclick = (e) => {
+      const b = e.target.closest('[data-i]');
+      if (b) close(actions[Number(b.dataset.i)].value);
+    };
+    dlg.onclick = (e) => { if (e.target === dlg) close(null); };
+    dlg.hidden = false;
+    const first = box.querySelector('button');
+    if (first) first.focus();
+  });
+}
+
 function goToDate(date) {
   state.selected = date;
   const d = parseYmd(date);
@@ -71,10 +104,15 @@ function goToDate(date) {
 }
 
 // ---------- 데이터 ----------
+function sortTodos() {
+  state.todos.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.due_date.localeCompare(b.due_date));
+}
+
 async function loadTodos() {
   const { data, error } = await sb.from('todos').select('*').order('created_at', { ascending: true });
   if (error) { toast('불러오지 못했어요: ' + error.message); return; }
   state.todos = data;
+  sortTodos();
   state.loaded = true;
 }
 
@@ -89,17 +127,19 @@ function overdueTodos() {
     .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.created_at.localeCompare(b.created_at));
 }
 
-async function saveTodo(fields) {
-  if (state.editingId) {
-    const { data, error } = await sb.from('todos').update(fields).eq('id', state.editingId).select().single();
-    if (error) throw error;
-    const i = state.todos.findIndex((t) => t.id === data.id);
-    if (i >= 0) state.todos[i] = data;
-    return data;
-  }
-  const { data, error } = await sb.from('todos').insert(fields).select().single();
+async function updateTodo(id, fields) {
+  const { data, error } = await sb.from('todos').update(fields).eq('id', id).select().single();
   if (error) throw error;
-  state.todos.push(data);
+  const i = state.todos.findIndex((t) => t.id === data.id);
+  if (i >= 0) state.todos[i] = data;
+  return data;
+}
+
+async function insertTodos(rows) {
+  const { data, error } = await sb.from('todos').insert(rows).select();
+  if (error) throw error;
+  state.todos.push(...data);
+  sortTodos();
   return data;
 }
 
@@ -117,10 +157,30 @@ async function toggleTodo(id) {
 }
 
 async function deleteTodo(id) {
-  if (!window.confirm('정말 지울까요?')) return;
-  const { error } = await sb.from('todos').delete().eq('id', id);
+  const t = state.todos.find((x) => x.id === id);
+  if (!t) return;
+  const siblings = t.series_id ? state.todos.filter((x) => x.series_id === t.series_id) : [t];
+
+  let choice;
+  if (siblings.length > 1) {
+    choice = await ask('지울까요?', [
+      { label: '이것만 지우기', value: 'one', danger: true },
+      { label: `같이 만든 ${siblings.length}개 모두 지우기`, value: 'all', danger: true },
+      { label: '취소', value: null },
+    ]);
+  } else {
+    choice = await ask('정말 지울까요?', [
+      { label: '지우기', value: 'one', danger: true },
+      { label: '취소', value: null },
+    ]);
+  }
+  if (!choice) return;
+
+  const ids = choice === 'all' ? siblings.map((x) => x.id) : [id];
+  const { error } = await sb.from('todos').delete().in('id', ids);
   if (error) { toast('지우지 못했어요: ' + error.message); return; }
-  state.todos = state.todos.filter((t) => t.id !== id);
+  state.todos = state.todos.filter((x) => !ids.includes(x.id));
+  if (ids.length > 1) toast(`${ids.length}개를 지웠어요.`);
   render();
   showView('home');
 }
@@ -156,22 +216,27 @@ function renderOverdueBanner() {
   $('overdue-count-text').textContent = `밀린 할 일 ${n}개`;
 }
 
+// 달력 한 달 그리기. cell(date, dow) 가 각 날짜 칸의 HTML을 돌려준다.
+function monthGrid(y, m, cell) {
+  const firstDow = new Date(y, m, 1).getDay();
+  const dayCount = new Date(y, m + 1, 0).getDate();
+  let html = '';
+  for (let i = 0; i < firstDow; i++) html += '<div class="cal__blank"></div>';
+  for (let d = 1; d <= dayCount; d++) {
+    html += cell(`${y}-${pad(m + 1)}-${pad(d)}`, (firstDow + d - 1) % 7, d);
+  }
+  return html;
+}
+
 function renderCalendar() {
   const y = state.viewYear;
   const m = state.viewMonth;
   const today = todayYmd();
   $('cal-title').textContent = `${y}년 ${m + 1}월`;
 
-  const firstDow = new Date(y, m, 1).getDay();
-  const dayCount = new Date(y, m + 1, 0).getDate();
-  let html = '';
-  for (let i = 0; i < firstDow; i++) html += '<div class="cal__blank"></div>';
-
-  for (let d = 1; d <= dayCount; d++) {
-    const date = `${y}-${pad(m + 1)}-${pad(d)}`;
+  $('cal-grid').innerHTML = monthGrid(y, m, (date, dow, d) => {
     const list = todosOn(date);
     const remaining = list.filter((t) => !t.completed).length;
-    const dow = (firstDow + d - 1) % 7;
 
     const cls = ['cal__day'];
     if (date === today) cls.push('is-today');
@@ -187,9 +252,8 @@ function renderCalendar() {
     }
 
     const label = `${m + 1}월 ${d}일` + (remaining ? `, 남은 할 일 ${remaining}개` : list.length ? ', 다 끝냄' : '');
-    html += `<button type="button" class="${cls.join(' ')}" data-date="${date}" aria-pressed="${date === state.selected}" aria-label="${label}"><span class="cal__num">${d}</span>${badge}</button>`;
-  }
-  $('cal-grid').innerHTML = html;
+    return `<button type="button" class="${cls.join(' ')}" data-date="${date}" aria-pressed="${date === state.selected}" aria-label="${label}"><span class="cal__num">${d}</span>${badge}</button>`;
+  });
 }
 
 function renderDay() {
@@ -255,8 +319,21 @@ function openEdit(todo, date) {
   $('f-desc').value = todo ? todo.description : '';
   $('f-date').value = todo ? todo.due_date : date;
   $('btn-delete').hidden = !todo;
+  $('mode-pills').hidden = !!todo; // 고칠 때는 하루 날짜만 바꾼다
+
+  // 새 할 일: 날짜 방식 초기화
+  state.mode = 'single';
+  const d = parseYmd(date);
+  state.pick = { year: d.getFullYear(), month: d.getMonth(), dates: new Set() };
+  state.repeat = { kind: 'daily', weekdays: new Set([d.getDay()]), endMode: 'until' };
+  $('r-start').value = date;
+  $('r-until').value = addMonths(date, 1);
+  $('r-count').value = '10';
+  $('r-every').value = '3';
+
   updateCounters();
   renderPills();
+  renderMode();
   showView('edit');
   if (!todo) $('f-title').focus();
 }
@@ -274,25 +351,161 @@ function renderPills() {
   }
 }
 
+function setPressed(container, attr, value) {
+  for (const b of container.querySelectorAll(`[data-${attr}]`)) {
+    const on = b.dataset[attr] === String(value);
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+function renderMode() {
+  setPressed($('mode-pills'), 'mode', state.mode);
+  $('mode-single').hidden = state.mode !== 'single';
+  $('mode-multi').hidden = state.mode !== 'multi';
+  $('mode-repeat').hidden = state.mode !== 'repeat';
+  if (state.mode === 'multi') renderPicker();
+  if (state.mode === 'repeat') renderRepeat();
+}
+
+// 여러 날 고르기 달력
+function renderPicker() {
+  const { year: y, month: m, dates } = state.pick;
+  const today = todayYmd();
+  $('pick-title').textContent = `${y}년 ${m + 1}월`;
+  $('pick-grid').innerHTML = monthGrid(y, m, (date, dow, d) => {
+    const cls = ['cal__day', 'cal__day--pick'];
+    if (date === today) cls.push('is-today');
+    if (date < today) cls.push('is-past');
+    if (dow === 0) cls.push('is-sun');
+    if (dates.has(date)) cls.push('is-picked');
+    return `<button type="button" class="${cls.join(' ')}" data-pick="${date}" aria-pressed="${dates.has(date)}" aria-label="${m + 1}월 ${d}일"><span class="cal__num">${d}</span></button>`;
+  });
+
+  const list = [...dates].sort();
+  $('multi-summary').textContent = list.length
+    ? `${list.length}일 선택: ` + list.slice(0, 4).map(formatDate).join(', ') + (list.length > 4 ? ` 외 ${list.length - 4}일` : '')
+    : '날짜를 눌러서 고르세요. 여러 개 고를 수 있어요.';
+}
+
+// 반복 규칙으로 날짜 목록 만들기
+function computeRepeatDates() {
+  const start = $('r-start').value;
+  if (!start) return { dates: [], error: '시작일을 골라 주세요.' };
+  const { kind, weekdays, endMode } = state.repeat;
+  const every = Math.floor(Number($('r-every').value) || 0);
+  const until = $('r-until').value;
+  const count = Math.floor(Number($('r-count').value) || 0);
+
+  if (kind === 'weekly' && weekdays.size === 0) return { dates: [], error: '요일을 하나 이상 골라 주세요.' };
+  if (kind === 'every' && every < 1) return { dates: [], error: '며칠마다 반복할지 적어 주세요.' };
+  if (endMode === 'until' && !until) return { dates: [], error: '종료 날짜를 골라 주세요.' };
+  if (endMode === 'until' && until < start) return { dates: [], error: '종료 날짜는 시작일보다 뒤여야 해요.' };
+  if (endMode === 'count' && count < 1) return { dates: [], error: '횟수를 1 이상으로 적어 주세요.' };
+
+  const limit = endMode === 'count' ? Math.min(count, MAX_BATCH) : MAX_BATCH;
+  const dates = [];
+  let capped = false;
+
+  if (kind === 'monthly') {
+    const s = parseYmd(start);
+    const day = s.getDate();
+    for (let k = 0; ; k++) {
+      const first = new Date(s.getFullYear(), s.getMonth() + k, 1);
+      const dim = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const d = ymd(new Date(first.getFullYear(), first.getMonth(), Math.min(day, dim)));
+      if (endMode === 'until' && d > until) break;
+      dates.push(d);
+      if (dates.length >= limit) { capped = endMode === 'until'; break; }
+    }
+  } else {
+    const step = kind === 'every' ? every : 1;
+    for (let d = start; ; d = addDays(d, step)) {
+      if (endMode === 'until' && d > until) break;
+      if (kind === 'weekly' && !weekdays.has(parseYmd(d).getDay())) continue;
+      dates.push(d);
+      if (dates.length >= limit) { capped = endMode === 'until'; break; }
+    }
+  }
+  return { dates, capped };
+}
+
+function describeRepeat() {
+  const { kind, weekdays } = state.repeat;
+  if (kind === 'daily') return '매일';
+  if (kind === 'every') return `${Math.floor(Number($('r-every').value) || 0)}일마다`;
+  if (kind === 'weekly') return '매주 ' + [...weekdays].sort().map((d) => WEEKDAYS[d]).join('·');
+  const start = $('r-start').value;
+  return start ? `매월 ${parseYmd(start).getDate()}일` : '매월';
+}
+
+function renderRepeat() {
+  const { kind, weekdays, endMode } = state.repeat;
+  setPressed($('r-kind'), 'kind', kind);
+  setPressed($('r-end'), 'end', endMode);
+  $('r-weekdays').hidden = kind !== 'weekly';
+  $('r-every-wrap').hidden = kind !== 'every';
+  $('r-until-wrap').hidden = endMode !== 'until';
+  $('r-count-wrap').hidden = endMode !== 'count';
+  for (const b of $('r-weekdays').querySelectorAll('.wd')) {
+    const on = weekdays.has(Number(b.dataset.dow));
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+
+  const r = computeRepeatDates();
+  const el = $('repeat-summary');
+  if (r.error) { el.textContent = r.error; return; }
+  const start = $('r-start').value;
+  const end = endMode === 'until' ? `${formatDate($('r-until').value)}까지` : `${Math.floor(Number($('r-count').value) || 0)}번`;
+  el.textContent = `${formatDate(start)}부터 ${describeRepeat()}, ${end} → ${r.dates.length}개 만들어요.` + (r.capped ? ` (한 번에 ${MAX_BATCH}개까지만 만들어요)` : '');
+}
+
 async function submitEdit(e) {
   e.preventDefault();
   const title = $('f-title').value.trim();
   const description = $('f-desc').value.trim();
-  const due_date = $('f-date').value;
 
   if (!title) { toast('제목을 적어 주세요.'); $('f-title').focus(); return; }
   if (!description) { toast('한 줄 설명을 적어 주세요.'); $('f-desc').focus(); return; }
-  if (!due_date) { toast('날짜를 골라 주세요.'); $('f-date').focus(); return; }
+
+  // 날짜 목록 정하기
+  let dates;
+  if (state.editingId || state.mode === 'single') {
+    const due_date = $('f-date').value;
+    if (!due_date) { toast('날짜를 골라 주세요.'); $('f-date').focus(); return; }
+    dates = [due_date];
+  } else if (state.mode === 'multi') {
+    dates = [...state.pick.dates].sort();
+    if (!dates.length) { toast('날짜를 하나 이상 골라 주세요.'); return; }
+  } else {
+    const r = computeRepeatDates();
+    if (r.error) { toast(r.error); return; }
+    if (!r.dates.length) { toast('만들어질 날짜가 없어요. 규칙을 확인해 주세요.'); return; }
+    dates = r.dates;
+  }
 
   const btn = $('edit-submit');
   btn.disabled = true;
   try {
-    const saved = await saveTodo({ title, description, due_date, estimated_minutes: state.pickedMinutes });
-    goToDate(saved.due_date);
+    const base = { title, description, estimated_minutes: state.pickedMinutes };
+    if (state.editingId) {
+      await updateTodo(state.editingId, { ...base, due_date: dates[0] });
+    } else {
+      // 혼자 만든 할 일에는 묶음 번호를 붙이지 않는다
+      const series_id = dates.length > 1 ? crypto.randomUUID() : null;
+      await insertTodos(dates.map((due_date) => (series_id ? { ...base, due_date, series_id } : { ...base, due_date })));
+      if (dates.length > 1) toast(`${dates.length}개를 만들었어요.`);
+    }
+    goToDate(dates[0]);
     render();
     showView('home');
   } catch (err) {
-    toast('저장하지 못했어요: ' + err.message);
+    if (/series_id/.test(err.message)) {
+      toast('보관함 업데이트가 필요해요. Supabase에서 supabase/update-1-series.sql을 실행해 주세요.');
+    } else {
+      toast('저장하지 못했어요: ' + err.message);
+    }
   } finally {
     btn.disabled = false;
   }
@@ -341,8 +554,11 @@ function wireEvents() {
   $('btn-add-top').addEventListener('click', () => openEdit(null, state.selected));
   $('btn-add').addEventListener('click', () => openEdit(null, state.selected));
   $('btn-logout').addEventListener('click', async () => {
-    if (!window.confirm('로그아웃할까요? 다시 들어오려면 이메일 인증을 한 번 더 해야 해요.')) return;
-    await sb.auth.signOut();
+    const ok = await ask('로그아웃할까요? 다시 들어오려면 이메일 인증을 한 번 더 해야 해요.', [
+      { label: '로그아웃', value: 'yes', danger: true },
+      { label: '취소', value: null },
+    ]);
+    if (ok) await sb.auth.signOut();
   });
 
   $('cal-prev').addEventListener('click', () => {
@@ -382,6 +598,7 @@ function wireEvents() {
   });
   $('btn-move-all').addEventListener('click', () => moveToToday(overdueTodos().map((t) => t.id)));
 
+  // 추가 / 고치기
   $('edit-back').addEventListener('click', () => showView('home'));
   $('edit-form').addEventListener('submit', submitEdit);
   $('f-title').addEventListener('input', updateCounters);
@@ -394,6 +611,66 @@ function wireEvents() {
     renderPills();
   });
   $('btn-delete').addEventListener('click', () => { if (state.editingId) deleteTodo(state.editingId); });
+
+  // 날짜 방식: 하루 / 여러 날 / 반복
+  $('mode-pills').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mode]');
+    if (!b) return;
+    state.mode = b.dataset.mode;
+    renderMode();
+  });
+
+  // 여러 날 고르기
+  $('pick-prev').addEventListener('click', () => {
+    state.pick.month -= 1;
+    if (state.pick.month < 0) { state.pick.month = 11; state.pick.year -= 1; }
+    renderPicker();
+  });
+  $('pick-next').addEventListener('click', () => {
+    state.pick.month += 1;
+    if (state.pick.month > 11) { state.pick.month = 0; state.pick.year += 1; }
+    renderPicker();
+  });
+  $('pick-grid').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (!b) return;
+    const date = b.dataset.pick;
+    if (state.pick.dates.has(date)) state.pick.dates.delete(date);
+    else if (state.pick.dates.size >= MAX_BATCH) { toast(`한 번에 ${MAX_BATCH}일까지 고를 수 있어요.`); return; }
+    else state.pick.dates.add(date);
+    renderPicker();
+  });
+
+  // 반복
+  $('r-kind').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-kind]');
+    if (!b) return;
+    state.repeat.kind = b.dataset.kind;
+    if (state.repeat.kind === 'weekly' && state.repeat.weekdays.size === 0 && $('r-start').value) {
+      state.repeat.weekdays.add(parseYmd($('r-start').value).getDay());
+    }
+    renderRepeat();
+  });
+  $('r-weekdays').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dow]');
+    if (!b) return;
+    const dow = Number(b.dataset.dow);
+    if (state.repeat.weekdays.has(dow)) state.repeat.weekdays.delete(dow);
+    else state.repeat.weekdays.add(dow);
+    renderRepeat();
+  });
+  $('r-end').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-end]');
+    if (!b) return;
+    state.repeat.endMode = b.dataset.end;
+    renderRepeat();
+  });
+  $('r-start').addEventListener('change', () => {
+    const start = $('r-start').value;
+    if (start && (!$('r-until').value || $('r-until').value < start)) $('r-until').value = addMonths(start, 1);
+    renderRepeat();
+  });
+  for (const id of ['r-until', 'r-count', 'r-every']) $(id).addEventListener('input', renderRepeat);
 }
 
 // ---------- 시작 ----------
